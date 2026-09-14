@@ -5,6 +5,23 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+// === 出站代理（可选）===
+// 用法：OUTBOUND_PROXY=http://user:pass@host:port
+// Node 内置 fetch 不支持代理，这里换成 undici 的 fetch 并挂上 ProxyAgent。
+// 注意：ProxyAgent 只认 http/https 代理（含 HTTP CONNECT），不认 socks5://。
+// 若上游只有 SOCKS5 入口，需在容器内先用 gost/privoxy 转成本地 HTTP 代理再指过来。
+const OUTBOUND_PROXY = process.env.OUTBOUND_PROXY || '';
+if (OUTBOUND_PROXY) {
+  try {
+    const { setGlobalDispatcher, ProxyAgent, fetch: undiciFetch } = await import('undici');
+    globalThis.fetch = undiciFetch;
+    setGlobalDispatcher(new ProxyAgent(OUTBOUND_PROXY));
+    console.log(`[server] OUTBOUND_PROXY=${OUTBOUND_PROXY.replace(/\/\/[^@/]*@/, '//***@')}`);
+  } catch (err) {
+    console.error(`[server] proxy init failed, falling back to direct: ${err.message}`);
+  }
+}
+
 // Load worker module
 const worker = await import('./worker.js');
 const handler = worker.default;

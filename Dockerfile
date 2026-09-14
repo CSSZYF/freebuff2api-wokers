@@ -2,38 +2,27 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# 运行时需要的工具：wget 用于启动时拉取最新 worker.js
+# 运行时工具：wget 用于容器内排查网络
 RUN apk add --no-cache wget
 
-# 预置当前版本作为本地兜底（启动时若拉取失败仍可运行）
-COPY package.json server.js worker.js ./
+# 依赖先装（仅 undici，用于可选出站代理）
+COPY package.json ./
+RUN npm install --omit=dev
 
-# 创建引导器：启动时从 GitHub raw 拉取最新 worker.js
-# （fscarmen/Argo-Nezha-Service-Container 模式：容器只做引导，逻辑在远程仓库）
-# 以后只需更新 worker.js 并推送 GitHub，重启容器即自动拿到新版；
-# 拉取失败时回退本地预置副本，保证容器始终可启动。
-RUN printf '%s\n' \
-    '#!/usr/bin/env sh' \
-    '' \
-    'set -e' \
-    'WORKER_URL="https://raw.githubusercontent.com/pingmike2/freebuff2api-wokers/main/worker.js"' \
-    'TMP="/tmp/worker.js"' \
-    '' \
-    'echo "[entrypoint] fetching latest worker.js from GitHub..."' \
-    'if wget -q --timeout=15 -O "$TMP" "$WORKER_URL"; then' \
-    '  cp "$TMP" /app/worker.js && echo "[entrypoint] worker.js updated"' \
-    'else' \
-    '  echo "[entrypoint] fetch failed, keeping bundled worker.js"' \
-    'fi' \
-    '' \
-    'exec node /app/server.js' \
-    > /app/entrypoint.sh
-RUN chmod +x /app/entrypoint.sh
+COPY server.js worker.js ./
 
-# Create credentials dir (mounted at runtime)
+# ⚠️ 与原版的关键差异：这里不再在启动时从上游仓库拉取 worker.js 覆盖本地副本。
+# 原版 entrypoint 每次启动都会用 raw.githubusercontent.com 上的最新 worker.js
+# 覆盖 /app/worker.js，会让本地对 PAUSED_MODELS 等逻辑的修改在重启后失效。
+# 需要跟随上游更新时，手动重新同步 worker.js 后再触发一次构建。
+#
+# 原版 entrypoint 逻辑（保留备查）：
+#   wget -q --timeout=15 -O /tmp/worker.js "$WORKER_URL" && cp /tmp/worker.js /app/worker.js
+#   exec node /app/server.js
+
 RUN mkdir -p /app/credentials && chown -R node:node /app
 
 USER node
 EXPOSE 8787
 
-ENTRYPOINT ["/app/entrypoint.sh"]
+CMD ["node", "server.js"]

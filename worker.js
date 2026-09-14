@@ -366,7 +366,10 @@ const STANDARD_MODELS = new Set([
 // 需要扩展暂停名单时改这里（或后续接 env PAUSED_MODELS 覆盖）。
 // ---------------------------------------------------------------------------
 const PAUSED_MODELS = new Set([
-  "deepseek/deepseek-v4-flash",
+  // 2026-09-15 实测：POST /api/v1/freebuff/session（x-freebuff-model: deepseek/deepseek-v4-flash）
+  // 返回 200 active，上游 2026-08-18 的暂停已解除，故不再过滤。
+  // 若日后 admission 开始返回 410 model_unavailable，把它放回本名单即可。
+  // "deepseek/deepseek-v4-flash",
   // 2026-08-20 官方下线 MiniMax M3（FREEBUFF_PAUSED_FREE_MODEL_IDS），
   // admission 返回 410 model_unavailable，新会话必然失败。
   "minimax/minimax-m3",
